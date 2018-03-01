@@ -6,240 +6,393 @@
             \/_____/   \/_____/     \/_/   \/_/\/_/   \/_/     \/_/
 
 
-This is a sample Slack bot built with Botkit.
-
-This bot demonstrates many of the core features of Botkit:
-
-* Connect to Slack using the real time API
-* Receive messages based on "spoken" patterns
-* Reply to messages
-* Use the conversation system to ask questions
-* Use the built in storage system to store and retrieve information
-  for a user.
-
-# RUN THE BOT:
-
-  Get a Bot token from Slack:
-
-    -> http://my.slack.com/services/new/bot
-
-  Run your bot from the command line:
-
-    token=<MY TOKEN> node slack_bot.js
-
-# USE THE BOT:
-
-  Find your bot inside Slack to send it a direct message.
-
-  Say: "Hello"
-
-  The bot will reply "Hello!"
-
-  Say: "who are you?"
-
-  The bot will tell you its name, where it is running, and for how long.
-
-  Say: "Call me <nickname>"
-
-  Tell the bot your nickname. Now you are friends.
-
-  Say: "who am I?"
-
-  The bot will tell you your nickname, if it knows one for you.
-
-  Say: "shutdown"
-
-  The bot will ask if you are sure, and then shut itself down.
-
-  Make sure to invite your bot into other channels using /invite @<my bot>!
-
-# EXTEND THE BOT:
-
-  Botkit has many features for building cool and useful bots!
-
-  Read all about it here:
-
-    -> http://howdy.ai/botkit
-
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+// 各種API設定値
+const DOCOMO_API_KEY = "xxxxxxxxxxxxxxxxxx"
+const DIALOG_URL = "https://api.apigw.smt.docomo.ne.jp/dialogue/v1/dialogue?APIKEY=" + DOCOMO_API_KEY;
+const QA_URL = "https://api.apigw.smt.docomo.ne.jp/knowledgeQA/v1/ask?APIKEY=" + DOCOMO_API_KEY;
+const WIKI_API_URL = "https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro=&explaintext="
+const WIKI_URL = "https://ja.wikipedia.org/wiki/"
 
+
+/**~~~~~~~~~~ おまじない的なものです。理解しなくても大丈夫です ~~~~~~~~~~~~~**/
 if (!process.env.token) {
-    console.log('Error: Specify token in environment');
-    process.exit(1);
+  console.log('Error: Specify token in environment');
+  process.exit(1);
 }
 
 var Botkit = require('../lib/Botkit.js');
+var CronJob = require('cron').CronJob;
 var os = require('os');
+var request = require('request');
 
 var controller = Botkit.slackbot({
-    debug: true,
+  debug: true,
 });
 
 var bot = controller.spawn({
-    token: process.env.token
+  token: process.env.token
 }).startRTM();
-
-controller.hears(['hello', 'hi'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    bot.api.reactions.add({
-        timestamp: message.ts,
-        channel: message.channel,
-        name: 'robot_face',
-    }, function(err, res) {
-        if (err) {
-            bot.botkit.log('Failed to add emoji reaction :(', err);
-        }
-    });
+/**~~~~~~~~~~~ おまじない ここまで ~~~~~~~~~~~~**/
 
 
+/**
+ * 「こんにちは」「こんちは」とメッセージを送られた時、「こんにちは」と返信
+ *  ユーザー情報が保存されていれば名前も返す
+ *
+ * @param  {[type]} bot     botオブジェクト
+ * @param  {[type]} message messageオブジェクト
+ * @return {[type]}
+ */
+controller.hears(['こんにちは', 'こんちは'], 'direct_message,direct_mention,mention', function(bot, message) {
+
+    //メッセージを送ったユーザーを取得
     controller.storage.users.get(message.user, function(err, user) {
         if (user && user.name) {
-            bot.reply(message, 'Hello ' + user.name + '!!');
+
+            //メッセージ返信
+            bot.reply(message, 'こんにちは、' + user.name + 'さん');
         } else {
-            bot.reply(message, 'Hello.');
+            //メッセージ返信
+            bot.reply(message, 'こんにちは:grinning:');
         }
     });
 });
 
-controller.hears(['call me (.*)', 'my name is (.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
+/**
+ * 「hello」と送られた時、リアクションを返信
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+controller.hears(['hello','Hello','HELLO'], 'direct_message,direct_mention,mention', function(bot, message) {
+
+  //リアクションを設定
+  bot.api.reactions.add({
+      timestamp: message.ts,
+      channel: message.channel,
+      name: 'grinning',
+  //エラー処理
+  }, function(err, res) {
+      if (err) {
+          bot.botkit.log('Failed to add emoji reaction :(', err);
+      }
+  });
+
+});
+
+
+/**
+ * 「〇〇って呼んで」「私は〇〇と言います」と送られた時、ユーザー情報を保存
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+controller.hears(['(.*)って呼んで', '私は(.*)といいます'], 'direct_message,direct_mention,mention', function(bot, message) {
+
+  　//正規表現で「〇〇」(名前)を抜き出す
     var name = message.match[1];
+
+    //ユーザー情報取得
     controller.storage.users.get(message.user, function(err, user) {
+
+        //userが設定されていない場合、設定
         if (!user) {
-            user = {
-                id: message.user,
-            };
+          user = {
+            id: message.user,
+          };
         }
+
+        //ユーザーの名前を設定
         user.name = name;
+
+        //ユーザー保存
         controller.storage.users.save(user, function(err, id) {
-            bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
+
+          //メッセージ返信
+          bot.reply(message, 'わかりました。今から ' + user.name + ' と呼びます');
         });
     });
 });
 
-controller.hears(['what is my name', 'who am i'], 'direct_message,direct_mention,mention', function(bot, message) {
+
+/**
+ * 「ラーメン」というワードが含まれる時、ラーメンの好みを聞き、回答によって返答を変える
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+controller.hears(['ラーメン'], 'direct_message,direct_mention,mention', function (bot, message) {
+
+    bot.reply(message, 'ラーメンいいですよね:grin:');
+
+    // 会話を開始します。
+    bot.startConversation(message, function (err, convo) {
+
+        // convo.ask() で質問をします。
+        convo.ask('何味が一番好きですか！', [
+            {
+                pattern: '醤油|しょうゆ', // マッチさせる単語
+                callback: function (response, convo) {
+
+                    //マッチした時の処理
+                    convo.say('オーソドックスでいいですね！私もよく食べます。'); // メッセージを送信。
+                    convo.next(); // convo.next()で、会話を次に進めます。通常は、会話が終了します。
+                }
+            },
+            {
+                pattern: '味噌|みそ',
+                callback: function (response, convo) {
+                    convo.say('北海道で食べたくなりますね！私も好きです。');
+                    convo.next();
+                }
+            },
+            {
+                pattern: '塩|しお',
+                callback: function (response, convo) {
+                    convo.say('あっさりしていいですよね！たまに食べたくなります。');
+                    convo.next();
+                }
+            },
+            {
+                pattern: 'とんこつ|豚骨',
+                callback: function (response, convo) {
+                    convo.say('豚さん。。');
+                    convo.next();
+                }
+            },
+            {
+                default: true,
+                callback: function (response, convo) {
+
+                    //どのパターンにもマッチしない時の処理
+                    convo.say('通ですね！私まだ食べたことがないです。');
+                    convo.next(); // 会話を次に進めます。この場合、最初の質問にも戻ります。
+                }
+            }
+        ]);
+
+    })
+
+});
+
+
+// cron作成
+var cron = new CronJob({
+
+  //1分おきに実行
+  cronTime: '*/1 * * * *', //
+  onTick: function() {
+    bot.say({
+      //channel設定
+      channel: 'general',
+
+      //送るテキスト設定
+      text: 'hahaha',
+
+      //ユーザー名設定
+      username: 'bot',
+      icon_url: ''
+    }, function(err) {
+
+      //エラー処理
+      if (err) {
+        bot.botkit.log(err);
+      }
+    });
+  },
+  start: false,
+  timeZone: 'Asia/Tokyo'
+});
+
+//cron開始
+cron.start();
+
+
+
+
+/**~~~~~~~~~~~~~~~~~~~~~~~~~~ APIメソッド ~~~~~~~~~~~~~~~~~~~~~~~~~~**/
+
+/**
+ * Docomo知識APIメソッド
+ * 質問を渡すと、それに対する答えが返してくれる
+ *
+ * @param  {[type]}   txt      質問
+ * @param  {Function} callback
+ * @return {[type]}            質問に対する答え
+ */
+function requestQAApi(txt, callback) {
+  var options = {
+    uri: QA_URL + "&q=" + encodeURIComponent(txt),
+    headers: {
+      "Content-type": "application/json",
+    }
+  };
+  request.get(options, function(error, response, body){
+    var res = "";
+    if (!error) {
+      var json = JSON.parse(body);
+      res = json.message.textForDisplay;
+    } else {
+      res = "わからないです。。"
+    }
+    callback(res);
+  });
+}
+
+
+/**
+ * Docomo雑談API
+ * 発話テキストを渡すと、それに対する受け答えを返してくれる
+ *
+ * @param  {[type]}   txt      発話テキスト
+ * @param  {Function} callback
+ * @return {[type]}            発話に対する受け答え
+ */
+function requestDialogApi(txt, callback) {
+  var options = {
+    uri: DIALOG_URL,
+    headers: {
+      "Content-type": "application/json",
+    },
+    json: {
+      "utt": txt,
+      "mode": "dialog"
+    }
+  };
+  request.post(options, function(error, response, body){
+    var res = "";
+    if (!error) {
+      res = body.utt;
+    } else {
+      res = "よくわかりません";
+    }
+    callback(res);
+  });
+}
+
+
+/**
+ * WikiAPI
+ * 単語を渡すと、それに対するwikiの見出しを返してくれる
+ *
+ * @param  {[type]}   txt      単語
+ * @param  {Function} callback
+ * @return {[type]}            wikiの見出し
+ */
+function wikiApi(txt, callback) {
+  var options = {
+    uri: WIKI_API_URL + "&titles=" + encodeURIComponent(txt),
+    headers: {
+      "Content-type": "application/json",
+    }
+  };
+  request.get(options, function(error, response, body){
+    var res = "";
+    var content = "";
+    if (!error) {
+      var json = JSON.parse(body);
+      var query = json.query;
+      if (query && query.pages) {
+        for (var p in query.pages) {
+          var content = query.pages[p].extract;
+
+          if (content) {
+            // slackで引用スタイルを適用するために`>` をつける
+            content = '> ' + content.replace(/\n/g, '\n> ') + '\n' +  WIKI_URL + txt;
+          } else {
+            content = 'わかりませんでした。';
+          }
+        }
+      } else {
+        content = 'わかりませんでした。';
+      }
+      res = content;
+    } else {
+      res = 'わかりませんでした。';
+    }
+    callback(res);
+  });
+}
+
+
+
+
+
+/**~~~~~~~~~~~~~~~~~ ここからは各PCのソースからは削除する ~~~~~~~~~~~~~~~~~~~**/
+
+
+/**
+ * wikiAPI連携例
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+
+controller.hears(['(.*)を調べて'], 'direct_message,direct_mention,mention', function(bot, message) {
+  var txt = message.match[1];
+
+  controller.storage.users.get(message.user, function(err, user) {
+    if (user && user.name) {
+      wikiApi(txt, function(res){
+        bot.reply(message, res);
+      });
+    } else {
+      wikiApi(txt, function(res){
+        bot.reply(message, res);
+      });
+    }
+  });
+});
+
+/**
+ * Docomo知識API連携例
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+controller.hears(['(*)\?','(*)？'], 'direct_message,direct_mention,mention', function(bot, message) {
+  var txt = message.match[1];
+
+  controller.storage.users.get(message.user, function(err, user) {
+    if (user && user.name) {
+      requestQAApi(txt, function(res){
+        bot.reply(message, res);
+      });
+    } else {
+      requestQAApi(txt, function(res){
+        bot.reply(message, res);
+      });
+    }
+  });
+});
+
+
+/**
+ * Docomo雑談API連携例
+ *
+ * @param  {[type]} bot     [description]
+ * @param  {[type]} message [description]
+ * @return {[type]}         [description]
+ */
+controller.hears(['(.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
+    var txt = message.match[1];
 
     controller.storage.users.get(message.user, function(err, user) {
         if (user && user.name) {
-            bot.reply(message, 'Your name is ' + user.name);
+            requestDialogApi(txt, function(res){
+              bot.reply(message, res);
+            });
         } else {
-            bot.startConversation(message, function(err, convo) {
-                if (!err) {
-                    convo.say('I do not know your name yet!');
-                    convo.ask('What should I call you?', function(response, convo) {
-                        convo.ask('You want me to call you `' + response.text + '`?', [
-                            {
-                                pattern: 'yes',
-                                callback: function(response, convo) {
-                                    // since no further messages are queued after this,
-                                    // the conversation will end naturally with status == 'completed'
-                                    convo.next();
-                                }
-                            },
-                            {
-                                pattern: 'no',
-                                callback: function(response, convo) {
-                                    // stop the conversation. this will cause it to end with status == 'stopped'
-                                    convo.stop();
-                                }
-                            },
-                            {
-                                default: true,
-                                callback: function(response, convo) {
-                                    convo.repeat();
-                                    convo.next();
-                                }
-                            }
-                        ]);
-
-                        convo.next();
-
-                    }, {'key': 'nickname'}); // store the results in a field called nickname
-
-                    convo.on('end', function(convo) {
-                        if (convo.status == 'completed') {
-                            bot.reply(message, 'OK! I will update my dossier...');
-
-                            controller.storage.users.get(message.user, function(err, user) {
-                                if (!user) {
-                                    user = {
-                                        id: message.user,
-                                    };
-                                }
-                                user.name = convo.extractResponse('nickname');
-                                controller.storage.users.save(user, function(err, id) {
-                                    bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
-                                });
-                            });
-
-
-
-                        } else {
-                            // this happens if the conversation ended prematurely for some reason
-                            bot.reply(message, 'OK, nevermind!');
-                        }
-                    });
-                }
+            var res = requestDialogApi(txt, function(res){
+              bot.reply(message, res);
             });
         }
     });
 });
-
-
-controller.hears(['shutdown'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    bot.startConversation(message, function(err, convo) {
-
-        convo.ask('Are you sure you want me to shutdown?', [
-            {
-                pattern: bot.utterances.yes,
-                callback: function(response, convo) {
-                    convo.say('Bye!');
-                    convo.next();
-                    setTimeout(function() {
-                        process.exit();
-                    }, 3000);
-                }
-            },
-        {
-            pattern: bot.utterances.no,
-            default: true,
-            callback: function(response, convo) {
-                convo.say('*Phew!*');
-                convo.next();
-            }
-        }
-        ]);
-    });
-});
-
-
-controller.hears(['uptime', 'identify yourself', 'who are you', 'what is your name'],
-    'direct_message,direct_mention,mention', function(bot, message) {
-
-        var hostname = os.hostname();
-        var uptime = formatUptime(process.uptime());
-
-        bot.reply(message,
-            ':robot_face: I am a bot named <@' + bot.identity.name +
-             '>. I have been running for ' + uptime + ' on ' + hostname + '.');
-
-    });
-
-function formatUptime(uptime) {
-    var unit = 'second';
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'minute';
-    }
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'hour';
-    }
-    if (uptime != 1) {
-        unit = unit + 's';
-    }
-
-    uptime = uptime + ' ' + unit;
-    return uptime;
-}

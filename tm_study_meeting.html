@@ -1,0 +1,147 @@
+<html>
+<head>
+<link rel="stylesheet" id="theme" href="chrome-extension://febilkbfcbhebfnokafefeacimjdckgl/theme/Github.css">
+</head>
+<body>
+<h2 id="botkit">Botkit</h2>
+<h3 id="controller-">Controller系</h3>
+<h4 id="-">メッセージ受信</h4>
+<pre><code><span class="hljs-comment">//「こんにちは」、「こんちは」と送られた時</span>
+controller.hears([<span class="hljs-string">'こんにちは'</span>, <span class="hljs-string">'こんちは'</span>], <span class="hljs-string">'direct_message,direct_mention,mention'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">bot, message</span>) </span>{
+}
+</code></pre><p>メッセージ受信には<code>controller.hears()</code>を使用します。<br>第一引数に起動メッセージ、第二引数にイベント種別を設定します。<br /><br />イベント種別は以下の通りです。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">イベント</th>
+<th style="text-align:left">概要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">direct_message</td>
+<td style="text-align:left">botに対し直接メッセージを送付した場合</td>
+</tr>
+<tr>
+<td style="text-align:left">direct_mention</td>
+<td style="text-align:left">メッセージを「@ボット名」を先頭で送信した場合</td>
+</tr>
+<tr>
+<td style="text-align:left">mention</td>
+<td style="text-align:left">メッセージに「@ボット名」が含まれている場合</td>
+</tr>
+</tbody>
+</table>
+<br />
+<p>上記の例だと「こんにちは」「こんちは」という文字が含まれたメッセージが送られた場合、<br><code>function(bot, message)</code>を実行します。<br>第一引数"bot"にはbotオブジェクトが、第2引数"message"には送られたメッセージなどが入った<br>messageオブジェクトが入ります。</p>
+<p>また、<code>controller.hears()</code>の第一引数には正規表現も使用でき</p>
+<pre><code><span class="hljs-comment">//「わたしは〇〇と言います」というメッセージが送られてきた場合</span>
+controller.hears([<span class="hljs-string">'わたしは(*)と言います'</span>], <span class="hljs-string">'direct_message,direct_mention,mention'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">bot, message</span>) </span>{
+
+  <span class="hljs-comment">//(*)の部分を抜き出す。</span>
+  <span class="hljs-keyword">var</span> name = message.match[<span class="hljs-number">1</span>];
+}
+</code></pre><p>のようにすることで特定の文字を抜き出すこともできます。  </p>
+<br />
+<h4 id="-">ユーザー情報の保存</h4>
+<pre><code>controller.hears([<span class="hljs-string">'私は(.*)といいます'</span>], <span class="hljs-string">'direct_message,direct_mention,mention'</span>, function(bot, message)
+
+  <span class="hljs-comment">//(*)の部分を抜き出す。</span>
+  <span class="hljs-keyword">var</span> name = message.match[<span class="hljs-number">1</span>];
+
+  <span class="hljs-comment">// ユーザー情報取得</span>
+  controller.storage.users.<span class="hljs-keyword">get</span>(message.user, function(err, user) {
+
+    <span class="hljs-comment">//userが設定されていない場合、設定</span>
+    <span class="hljs-keyword">if</span> (!user) {
+      user = {
+        id: message.user
+      };
+    }
+    user.name = name;
+
+    <span class="hljs-comment">//ユーザー保存</span>
+    controller.storage.users.save(user, function(err, id) {
+      bot.reply(message, <span class="hljs-string">'わかりました。今から '</span> + user.name + <span class="hljs-string">' と呼びます'</span>);
+    });
+  });
+});
+</code></pre><p><code>controller.storage.users.get()</code>  を使用してユーザー情報を取得し、<code>controller.storage.users.save()</code><br>を使用しユーザーの保存ができます。<br></p>
+<h3 id="bot-">Bot系</h3>
+<h4 id="-">リアクション送信</h4>
+<pre><code>controller.hears([<span class="hljs-string">'こんにちは'</span>, <span class="hljs-string">'こんちは'</span>], <span class="hljs-string">'direct_message,direct_mention,mention'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">bot, message</span>) </span>{
+
+    <span class="hljs-comment">//リアクションを送信</span>
+    bot.api.reactions.add({
+        <span class="hljs-attr">timestamp</span>: message.ts,
+        <span class="hljs-attr">channel</span>: message.channel,
+        <span class="hljs-attr">name</span>: <span class="hljs-string">'grinning'</span>,
+        <span class="hljs-comment">//エラー処理</span>
+    }, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">err, res</span>) </span>{
+        <span class="hljs-keyword">if</span> (err) {
+            bot.botkit.log(<span class="hljs-string">'Failed to add emoji reaction :('</span>, err);
+        }
+    });
+});
+</code></pre><p>リアクションとはslackのスタンプのようなものです。<br>リアクションは<code>bot.api.reactions.add()</code>を使用します。  </p>
+<p><code>timestamp</code> にはリアクションのタイムスタンプが、<code>channel</code>にはslackのチャンネルが<br><code>name</code> にはslackの英語のリアクション名が入ります。   </p>
+<p>&lt;img src="slack_reaction.png" width="300" height="300"&gt;  </p>
+<br />
+<h4 id="-">メッセージ送信</h4>
+<pre><code>controller.hears([<span class="hljs-string">'こんにちは'</span>, <span class="hljs-string">'こんちは'</span>], <span class="hljs-string">'direct_message,direct_mention,mention'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">bot, message</span>) </span>{
+
+  <span class="hljs-comment">//メッセージ送信</span>
+  bot.reply(message, <span class="hljs-string">'こんにちは.'</span>);
+});
+</code></pre><p>メッセージの送信は<code>bot.reply()</code>を使用します。<br>第一引数にメッセージオブジェクト、第二引数に送信するメッセージを設定します。  </p>
+<p>メッセージは "こんにちは:リアクション名:" のように文字とリアクションを組み合わせて<br>送ることもできます。</p>
+<br />
+<h3 id="cron">Cron</h3>
+<h4 id="-">定期的に実行</h4>
+<pre><code><span class="hljs-comment">// cron作成</span>
+<span class="hljs-keyword">var</span> cron = <span class="hljs-keyword">new</span> CronJob({
+  <span class="hljs-comment">//1分おきに実行</span>
+  cronTime: <span class="hljs-string">'*/1 * * * *'</span>,
+  <span class="hljs-attr">onTick</span>: <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+
+    <span class="hljs-comment">//メッセージ送信</span>
+    bot.say({
+      <span class="hljs-attr">channel</span>: <span class="hljs-string">'general'</span>,
+      <span class="hljs-attr">text</span>: <span class="hljs-string">'hello'</span>,
+      <span class="hljs-attr">username</span>: <span class="hljs-string">'bot'</span>,
+      <span class="hljs-attr">icon_url</span>: <span class="hljs-string">''</span>
+    }, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">err</span>) </span>{
+      <span class="hljs-keyword">if</span> (err) {
+        bot.botkit.log(err);
+      }
+    });
+  },
+  <span class="hljs-attr">start</span>: <span class="hljs-literal">false</span>,
+  <span class="hljs-attr">timeZone</span>: <span class="hljs-string">'Asia/Tokyo'</span>
+});
+
+<span class="hljs-comment">//cron開始</span>
+cron.start();
+</code></pre><p>定期的に実行するにはcronオブジェクトを作成します。<br><code>cronTime</code>には実行する頻度を設定し、<code>onTick</code>  に実際に行う処理を記述します。<br><code>cronTime</code>  は下記のサイトを参考に設定してみてください。
+<a href="https://qiita.com/katsukii/items/d5f90a6e4592d1414f99">https://qiita.com/katsukii/items/d5f90a6e4592d1414f99</a></p>
+<br />
+<h3 id="api">API</h3>
+<h4 id="docomo-api">Docomo雑談API</h4>
+<pre><code>requestDialogApi(<span class="hljs-string">"こんにちは"</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">res</span>)</span>{
+
+  <span class="hljs-comment">//APIのレスポンスをメッセージ送信</span>
+  bot.reply(message, res);
+});
+</code></pre><p>Docomo雑談APIは発話テキストを渡すと、それに対する適切な受け答えを返却してくれるAPIです。
+第一引数に発話テキストを渡し、その受け答えが<code>function(res)</code>のresに格納されています。</p>
+<br />
+<h4 id="docomoq-a-api">DocomoQ&amp;A API</h4>
+<pre><code>requestQAApi(<span class="hljs-string">"アメリカの大統領は?"</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">res</span>)</span>{
+
+  <span class="hljs-comment">//APIのレスポンスをメッセージ送信</span>
+  bot.reply(message, res);
+});
+</code></pre><p>DocomoQ&amp;A APIは質問をテキストで渡すと、それに対する回答を返却してくれるAPIです。
+第一引数に質問テキストを渡し、その回答が<code>function(res)</code>のresに格納されています。</p>
+</body>
+</html>
